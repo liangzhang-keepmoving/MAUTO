@@ -1,0 +1,21 @@
+# Core dependencies
+torch>=1.12.0
+numpy>=1.21.0
+networkx>=2.8
+pyyaml>=6.0
+wandb>=0.13.0
+
+# LLM integration
+openai>=0.27.0
+transformers>=4.20.0
+
+# Environment and simulation
+gym>=0.21.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
+pandas>=1.4.0
+
+# Development tools
+pytest>=7.0.0
+black>=22.0.0
+flake8>=4.0.0
