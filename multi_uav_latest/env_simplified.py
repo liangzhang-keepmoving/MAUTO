@@ -325,7 +325,7 @@ class SimplifiedMultiUAVEnvironment:
             'done_by_task_size': done
         }
         
-        return observations, total_rewards, done, info
+        return observations, total_rewards, done, info, uav_delays
     
     def _get_observations(self):
        
