@@ -1,0 +1,18 @@
+{
+  "episode_count": 500,
+  "current_weights": {
+    "w_avg_delay": 0.25,
+    "w_max_delay": 0.2,
+    "w_task_energy": 0.3,
+    "w_move_energy": 0.05,
+    "w_load_balance": 0.05,
+    "w_movement_benefit": 0.15
+  },
+  "avg_reward_last_100": -1.2280063879517984,
+  "weight_history": [],
+  "variance_stats": {
+    "avg_delay_std": 0.024466633203013118,
+    "task_energy_std": 0.041448029513085974,
+    "move_energy_std": 0.20879604502337795
+  }
+}

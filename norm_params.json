@@ -1,0 +1,15 @@
+{
+  "min_all_delay": 0.37658681734987026,
+  "max_all_delay": 8.968379552837451,
+  "min_avg_delay": 0.9366708018639867,
+  "max_avg_delay": 6.012391970046778,
+  "min_max_delay": 1.0951604378897615,
+  "max_max_delay": 8.968379552837451,
+  "min_task_energy": 72.57480875887686,
+  "max_task_energy": 310.2226381322794,
+  "min_move_energy": 4632.0,
+  "max_move_energy": 5789.688179632618,
+  "min_load_variance": 0.0,
+  "max_load_variance": 36.0,
+  "max_movement_benefit": 2.0
+}
