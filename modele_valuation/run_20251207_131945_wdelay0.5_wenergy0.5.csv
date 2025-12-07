@@ -1,0 +1,12 @@
+model_path,episode,reward,avg_delay,total_energy,steps
+episode_0_model.pth,0,-3.6242,69.718753,1367.28,15
+episode_50_model.pth,50,-3.6861,72.991701,1270.63,15
+episode_100_model.pth,100,-4.023,73.19306,1429.97,15
+episode_150_model.pth,150,-3.5907,70.063999,1337.23,15
+episode_200_model.pth,200,-3.6555,71.987008,1294.57,15
+episode_250_model.pth,250,-3.863,73.527676,1337.57,15
+episode_300_model.pth,300,-3.7102,73.50849,1262.48,15
+episode_350_model.pth,350,-3.6959,73.237565,1265.92,15
+episode_400_model.pth,400,-3.4898,69.641545,1303.62,15
+episode_450_model.pth,450,-3.4714,69.546388,1298.2,15
+episode_500_model.pth,500,-3.4015,67.44785,1345.16,15
