@@ -304,14 +304,14 @@ if __name__ == "__main__":
     # 创建生成器（使用推荐配置）
     generator = ImprovedUserTrajectoryGenerator(
         num_users=5,
-        num_steps=16,
+        num_steps=31,
         area_length=400,
         area_width=400,
         user_max_speed=2.0,
         time_step=5.0,
-        min_task_size=15,
-        max_task_size=20,
-        movement_mode='random',  # 推荐使用 'inertia'
+        min_task_size=10,
+        max_task_size=30,
+        movement_mode='inertia',  # 推荐使用 'inertia'
     )
     
     # 生成轨迹

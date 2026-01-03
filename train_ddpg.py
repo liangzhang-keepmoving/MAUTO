@@ -10,7 +10,7 @@ from datetime import datetime
 
 # 导入自定义模块
 from DDPG import DDPGAgent
-from env_simplified import SimplifiedMultiUAVEnvironment
+from env_train import TrainingMultiUAVEnvironment
 def save_uav_trajectories_to_json(episode, trajectories, initial_positions,
                                   save_dir='uav_trajectories', run_id=None):
     """
@@ -53,16 +53,21 @@ def convert_soft_to_hard_allocation(allocation_soft, num_uavs, num_users, epsilo
     """
     allocation_hard = torch.zeros_like(allocation_soft)
     
-    for user_id in range(num_users):
-        if np.random.random() < epsilon:
-            # 随机探索：随机选择一个UAV
-            best_uav = np.random.randint(0, num_uavs)
-        else:
-            # 贪婪选择：选择概率最高的UAV
-            user_probs = allocation_soft[:, user_id]
-            best_uav = torch.argmax(user_probs)
+    # for user_id in range(num_users):
+    #     if np.random.random() < epsilon:
+    #         # 随机探索：随机选择一个UAV
+    #         best_uav = np.random.randint(0, num_uavs)
+    #     else:
+    #         # 贪婪选择：选择概率最高的UAV
+    #         user_probs = allocation_soft[:, user_id]
+    #         best_uav = torch.argmax(user_probs)
             
-        allocation_hard[best_uav, user_id] = 1.0
+    #     allocation_hard[best_uav, user_id] = 1.0
+    for user_id in range(num_users):
+        user_probs = allocation_soft[:, user_id]
+        best_uav = torch.argmax(user_probs)
+        
+    allocation_hard[best_uav, user_id] = 1.0
         
     return allocation_hard
 
@@ -70,20 +75,21 @@ def convert_soft_to_hard_allocation(allocation_soft, num_uavs, num_users, epsilo
 def train_ddpg(config):
     
     # 创建环境
-    env = SimplifiedMultiUAVEnvironment(
+    env = TrainingMultiUAVEnvironment(
         num_uavs=config['num_uavs'], 
         num_users=config['num_users'],
-        trajectory_file="user_trajectories.json",
+        trajectory_file="user_trajectories_hot.json",
     )
     
     # 获取奖励权重用于命名
     weights = env.reward_system.weights
-    w_delay = weights['w_delay']
-    w_energy = weights['w_energy']
+    w_delay = weights.get('w_delay', 0.0)
+    w_task_energy = weights.get('w_task_energy', 0.0)
+    w_move_energy = weights.get('w_move_energy', 0.0)
     
     run_id = time.strftime('%Y%m%d_%H%M%S')  # 本次训练唯一标识
     # 创建模型保存目录，加上权重信息
-    model_save_dir = f'saved_models/run_{run_id}_wdelay{w_delay}_wenergy{w_energy}'
+    model_save_dir = f'saved_models/run_{run_id}_wdelay{w_delay}_wtask{w_task_energy}_wmove{w_move_energy}'
     os.makedirs(model_save_dir, exist_ok=True)
     # 创建智能体SSS
     agent = DDPGAgent(
@@ -135,13 +141,13 @@ def train_ddpg(config):
             # 选择动作
             allocation, offloading, motion = agent.select_action(
                 state, 
-                add_noise=True,
-                hard=False  # 训练时使用软分配
+                add_noise=True
             )
             
             # 使用 epsilon-greedy 策略进行用户分配探索
             # epsilon 随 agent.noise_scale 衰减
-            epsilon_allocation = 0.3 * agent.noise_scale 
+            #epsilon_allocation = 0.3 * agent.noise_scale 
+            epsilon_allocation = 0
             allocation_hard = convert_soft_to_hard_allocation(
                 allocation, env.num_uavs, env.num_users, epsilon=epsilon_allocation
             )
@@ -165,8 +171,8 @@ def train_ddpg(config):
 
                 # 计算新位置 (直接在笛卡尔坐标系更新)
                 # agent.max_distance 在这里理解为 "最大单步移动距离" (例如 30m)
-                dx = vx * 20
-                dy = vy * 20
+                dx = vx * config['max_distance']
+                dy = vy * config['max_distance']
                 
                 actions[f'uav_{uav_id}'] = {
                     'user_competition_probs': allocation_hard[uav_id].cpu().numpy(),
@@ -216,7 +222,7 @@ def train_ddpg(config):
         agent.decay_noise()
 
         # ====== 每个 episode 保存轨迹（不再保存 action_logs） ======
-        if episode%50 ==0:
+        if episode%20 ==0:
             save_uav_trajectories_to_json(
                 episode=episode,
                 trajectories=trajectories,
@@ -258,20 +264,6 @@ def train_ddpg(config):
         
     
     print(f"\n训练完成！数据已保存到 {csv_file}")
-    
-    # 保存统计极值
-    stats_data = env.reward_system.get_diagnostics()['stats']
-    stats_file = f'saved_models/run_{run_id}_wdelay{w_delay}_wenergy{w_energy}/stats.json'
-    
-    # 确保值是可序列化的
-    serializable_stats = {
-        k: float(v) if v not in [float('inf'), float('-inf')] else str(v)
-        for k, v in stats_data.items()
-    }
-    
-    with open(stats_file, 'w', encoding='utf-8') as f:
-        json.dump(serializable_stats, f, indent=2, ensure_ascii=False)
-    print(f"统计极值已保存到: {stats_file}")
 
 def main():
     """主函数"""
@@ -281,16 +273,16 @@ def main():
         'num_users': 5,
         
         # 训练参数
-        'max_episodes': 501,
+        'max_episodes': 500,
         'max_steps_per_episode': 40,
-        'batch_size': 128,  # Increased from 64 to 128
+        'batch_size': 256,
         
         # 网络参数
-        'lr_actor': 5e-5,   # Reduced from 1e-4
-        'lr_critic': 5e-4,  # Reduced from 1e-3
+        'lr_actor': 1e-5,
+        'lr_critic': 1e-4,
         'gamma': 0.99,
-        'tau': 0.005,
-        'max_distance': 30,
+        'tau': 0.001,
+        'max_distance': 20,
     }
     
     print("开始DDPG多无人机训练...")

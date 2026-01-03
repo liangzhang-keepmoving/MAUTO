@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from DDPG import DDPGAgent
-from env_simplified import SimplifiedMultiUAVEnvironment
+from env_test import TestMultiUAVEnvironment
 
 
 def convert_to_serializable(obj):
@@ -77,7 +77,7 @@ def evaluate_one_episode(env, agent, max_steps=15, save_details=False):
     for step in range(max_steps):
         # 生成软分配，转为硬分配执行
         allocation_soft, offloading, motion = agent.select_action(
-            state, add_noise=False, hard=False
+            state, add_noise=False
         )
         allocation = convert_soft_to_hard_allocation(
             allocation_soft, env.num_uavs, env.num_users
@@ -95,9 +95,8 @@ def evaluate_one_episode(env, agent, max_steps=15, save_details=False):
             
             # 转换为笛卡尔坐标系的移动向量 (dx, dy)
             # max_distance 在这里作为单步最大移动距离 (20m)
-            # 注意：env.uav_max_speed = 20
-            dx = vx * 20.0
-            dy = vy * 20.0
+            dx = vx * float(getattr(env, 'max_flight_distance', 20.0))
+            dy = vy * float(getattr(env, 'max_flight_distance', 20.0))
             
             actions[f'uav_{uav_id}'] = {
                 'user_competition_probs': allocation[uav_id].cpu().numpy(),
@@ -114,7 +113,7 @@ def evaluate_one_episode(env, agent, max_steps=15, save_details=False):
         episode_avg_delay += float(comps['avg_delay'])
         # 适配当前 reward_system.py，使用 total_energy (即 total_task_energy)
         # 注意：reward_system.py 中 total_energy 仅包含任务能耗
-        episode_task_energy += float(comps['total_energy'])
+        episode_task_energy += float(comps.get('total_task_energy', comps['total_energy']))
         
         # 保存步骤详情 (只保留奖励、时延、能耗)
         if save_details:
@@ -135,7 +134,7 @@ def evaluate_one_episode(env, agent, max_steps=15, save_details=False):
     result = {
         'reward': round(episode_reward, 4),
         'avg_delay': round(episode_avg_delay, 6) if episode_steps > 0 else 0, # 平均时延
-        'total_energy': round(episode_task_energy, 2), # 总能耗
+        'total_task_energy': round(episode_task_energy, 2),
         'steps': episode_steps
     }
     
@@ -162,7 +161,7 @@ def evaluate_models(
     
     # 1. 初始化环境 (只需初始化一次)
     print("\n[1/3] 初始化环境...")
-    env = SimplifiedMultiUAVEnvironment(
+    env = TestMultiUAVEnvironment(
         num_uavs=2,
         num_users=5,
         trajectory_file=trajectory_file,
@@ -292,6 +291,6 @@ if __name__ == "__main__":
         output_json_dir="eval_details",
         trajectory_file="user_trajectories.json", 
         max_distance=20,
-        max_steps=15,
+        max_steps=30,
         save_details=True
     )

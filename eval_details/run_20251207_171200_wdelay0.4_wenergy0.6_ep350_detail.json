@@ -1,0 +1,103 @@
+{
+  "model": "saved_models\\run_20251207_171200_wdelay0.4_wenergy0.6\\episode_350_model.pth",
+  "episode": 350,
+  "timestamp": "2025-12-07T17:34:25.341865",
+  "summary": {
+    "reward": -0.0447,
+    "avg_delay": 44.137018,
+    "total_energy": 410.21,
+    "steps": 15
+  },
+  "steps": [
+    {
+      "step": 0,
+      "reward": -0.02677836230123767,
+      "avg_delay": 3.4414241193407804,
+      "total_energy": 28.34359649565876
+    },
+    {
+      "step": 1,
+      "reward": -0.0,
+      "avg_delay": 2.9021456448423186,
+      "total_energy": 25.94233663256825
+    },
+    {
+      "step": 2,
+      "reward": -0.0,
+      "avg_delay": 2.970801848002531,
+      "total_energy": 27.532307239424945
+    },
+    {
+      "step": 3,
+      "reward": -0.012431576294982287,
+      "avg_delay": 3.2585025977610242,
+      "total_energy": 28.46455117722006
+    },
+    {
+      "step": 4,
+      "reward": -0.0038921218613091543,
+      "avg_delay": 3.149624553731692,
+      "total_energy": 29.44524345960069
+    },
+    {
+      "step": 5,
+      "reward": -0.0015901367505147311,
+      "avg_delay": 3.120274243569063,
+      "total_energy": 26.80530591003189
+    },
+    {
+      "step": 6,
+      "reward": -0.0,
+      "avg_delay": 2.862193502603764,
+      "total_energy": 25.948722137755333
+    },
+    {
+      "step": 7,
+      "reward": -0.0,
+      "avg_delay": 2.969356973029323,
+      "total_energy": 28.909593154789015
+    },
+    {
+      "step": 8,
+      "reward": -0.0,
+      "avg_delay": 3.0626115160476024,
+      "total_energy": 26.846853727451283
+    },
+    {
+      "step": 9,
+      "reward": -0.0,
+      "avg_delay": 2.4109915292425628,
+      "total_energy": 24.068345028401872
+    },
+    {
+      "step": 10,
+      "reward": -0.0,
+      "avg_delay": 2.510129408407539,
+      "total_energy": 24.98085769897232
+    },
+    {
+      "step": 11,
+      "reward": -0.0,
+      "avg_delay": 3.0899533087466735,
+      "total_energy": 27.77093790923882
+    },
+    {
+      "step": 12,
+      "reward": -0.0,
+      "avg_delay": 2.4604445121445773,
+      "total_energy": 27.69943117147472
+    },
+    {
+      "step": 13,
+      "reward": -0.0,
+      "avg_delay": 2.9774484268861885,
+      "total_energy": 27.260727882584693
+    },
+    {
+      "step": 14,
+      "reward": -0.0,
+      "avg_delay": 2.9511156687321383,
+      "total_energy": 30.19085181658782
+    }
+  ]
+}

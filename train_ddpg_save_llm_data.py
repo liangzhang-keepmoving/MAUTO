@@ -12,7 +12,7 @@ from datetime import datetime
 from collections import deque
 
 from DDPG import DDPGAgent
-from env_simplified import SimplifiedMultiUAVEnvironment
+from env_train import TrainingMultiUAVEnvironment
 
 
 class LLMDataCollector:
@@ -309,10 +309,27 @@ class LLMDataCollector:
 def convert_soft_to_hard_allocation(allocation_soft, num_uavs, num_users):
     """将软分配转换为硬分配"""
     allocation_hard = torch.zeros_like(allocation_soft)
+    uav_loads = np.zeros(num_uavs, dtype=int)
+    tie_margin = 0.05
     for user_id in range(num_users):
         user_probs = allocation_soft[:, user_id]
-        best_uav = torch.argmax(user_probs)
+        probs_np = user_probs.detach().cpu().numpy()
+        max_prob = float(np.max(probs_np))
+        if num_uavs >= 2:
+            sorted_probs = np.sort(probs_np)
+            second_prob = float(sorted_probs[-2])
+        else:
+            second_prob = float("-inf")
+
+        if max_prob - second_prob <= tie_margin:
+            candidates = np.flatnonzero(probs_np >= (max_prob - tie_margin))
+            min_load = int(np.min(uav_loads[candidates])) if candidates.size > 0 else int(np.min(uav_loads))
+            best_candidates = candidates[uav_loads[candidates] == min_load] if candidates.size > 0 else np.flatnonzero(uav_loads == min_load)
+            best_uav = int(np.random.choice(best_candidates))
+        else:
+            best_uav = int(torch.argmax(user_probs).item())
         allocation_hard[best_uav, user_id] = 1.0
+        uav_loads[best_uav] += 1
     return allocation_hard
 
 
@@ -329,7 +346,7 @@ def train_ddpg_with_llm_data_collection(config):
     print(f"Config: {json.dumps(config, indent=2)}\n")
     
     # 创建环境
-    env = SimplifiedMultiUAVEnvironment(
+    env = TrainingMultiUAVEnvironment(
         num_uavs=config['num_uavs'], 
         num_users=config['num_users'],
         trajectory_file=config.get('trajectory_file', "user_trajectories.json"),

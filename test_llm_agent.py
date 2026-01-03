@@ -3,7 +3,7 @@
 import json
 import numpy as np
 from datetime import datetime
-from env_simplified import SimplifiedMultiUAVEnvironment
+from env_test import TestMultiUAVEnvironment
 from llm_agent import LLMAgent
 
 
@@ -45,7 +45,7 @@ def test_llm(num_steps=30, save_result=True):
     
     # 创建环境
     print("\n[1/3] 初始化环境...")
-    env = SimplifiedMultiUAVEnvironment(
+    env = TestMultiUAVEnvironment(
         num_uavs=2,
         num_users=5,
         trajectory_file="user_trajectories.json"
@@ -54,7 +54,7 @@ def test_llm(num_steps=30, save_result=True):
     
     # 创建LLM代理
     print("\n[2/3] 初始化LLM代理...")
-    agent = LLMAgent(model="google/gemini-3-pro-preview",api_key="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")
+    agent = LLMAgent(model="deepseek-reasoner",api_key="sk-2d58dde01aa94f64a1b886765fd10305")
     print("✓ LLM代理创建成功")
     
     # 运行测试
@@ -71,6 +71,18 @@ def test_llm(num_steps=30, save_result=True):
         
         # 环境步进
         next_state, reward, done, info = env.step(actions)
+        
+        # 记录决策结果到Agent历史
+        offloading_ratios = actions['uav_0']['offloading_ratios']
+        agent.record_result(
+            step=step,
+            user_assignments=convert_to_serializable(info['user_assignments']),
+            offloading_ratios=offloading_ratios,
+            delay=float(info['reward_components']['avg_delay']),
+            energy=float(info['reward_components']['total_energy']),
+            uav_states=convert_to_serializable(info['uav_states']),
+            user_states=convert_to_serializable(info['user_states'])
+        )
         
         # 记录（转换为可序列化类型）
         step_info = {
@@ -153,4 +165,4 @@ def test_llm(num_steps=30, save_result=True):
 
 if __name__ == "__main__":
     # 运行测试
-    test_llm(num_steps=15, save_result=True)
+    test_llm(num_steps=30, save_result=True)

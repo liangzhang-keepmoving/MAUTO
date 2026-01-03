@@ -4,7 +4,7 @@ estimate_norm_params.py - 修正版
 """
 import numpy as np
 import json
-from env_simplified import SimplifiedMultiUAVEnvironment
+from env_train import TrainingMultiUAVEnvironment
 
 def generate_ddpg_random_actions_hard_and_convert(n_uavs, n_users, max_move_distance=30.0):
     """
@@ -74,11 +74,10 @@ def estimate_normalization_parameters(config, num_episodes=20000, save_path='nor
     print(f"  Episodes: {num_episodes}")
     print("=" * 60)
     
-    env = SimplifiedMultiUAVEnvironment(
+    env = TrainingMultiUAVEnvironment(
         num_uavs=config['num_uavs'],
         num_users=config['num_users'],
-        trajectory_file="user_trajectories_hot.json",
-        max_flight_distance=config.get('max_distance', 20)
+        trajectory_file="user_trajectories_hot.json"
     )
     
     # ========== 收集数据 ==========

@@ -124,9 +124,9 @@ def plot_for_csv(csv_file, llm_metrics_list, output_dir):
 
 def main():
     # 定义路径
-    csv_dir = r"D:\code\1206\modele_valuation"
-    llm_file1 = r"D:\code\1206\llm_test_20251207_152451.json"
-    llm_file2 = r"D:\code\1206\llm_test_with_ddpg_knowledge_20251207_154256.json"
+    csv_dir = r"D:\code\1219\modele_valuation"
+    llm_file1 = r"D:\code\1219\llm_test_20251221_172217.json"
+    llm_file2 = r"D:\code\1219\llm_test_20251221_172217.json"
     
     print("开始处理数据并绘图...")
     

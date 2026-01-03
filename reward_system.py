@@ -3,7 +3,6 @@
 只考虑归一化后的时延和能耗
 """
 import numpy as np
-import os
 
 class AdaptiveRewardSystem:
     """简化版奖励系统 - 固定权重，仅关注时延和能耗"""
@@ -11,7 +10,6 @@ class AdaptiveRewardSystem:
     def __init__(self, 
                  num_uavs,
                  num_users,
-                 enable_adaptive=False, # 保留接口但不使用
                  log_dir='reward_logs'):
         """
         初始化奖励系统
@@ -19,7 +17,6 @@ class AdaptiveRewardSystem:
         Args:
             num_uavs: 无人机数量
             num_users: 用户数量
-            enable_adaptive: 是否启用自适应权重 (本版本忽略)
             log_dir: 日志保存目录
         """
         self.num_uavs = num_uavs
@@ -29,8 +26,12 @@ class AdaptiveRewardSystem:
         # 固定权重设置
         # 你可以根据需要调整这些权重
         self.weights = {
-            'w_delay': 0.6,   # 时延权重
-            'w_energy': 0.4   # 能耗权重
+            'w_delay': 0.3,
+            'w_distance': 0.2,
+            'w_load': 0.2,
+            'w_task_energy': 0.3,
+            'w_move_energy': 0.3,
+            'w_boundary': 0.2
         }
         
         # ========== 归一化参数 ==========
@@ -44,14 +45,6 @@ class AdaptiveRewardSystem:
             'max_move_energy': 1.0
         }
         
-        # 统计极值
-        self.stats = {
-            'min_avg_delay': float('inf'),
-            'max_avg_delay': float('-inf'),
-            'min_total_task_energy': float('inf'),
-            'max_total_task_energy': float('-inf')
-        }
-        
     def set_normalization_params(self, params):
         """
         设置归一化参数
@@ -63,10 +56,10 @@ class AdaptiveRewardSystem:
         print(f"✓ 归一化参数已设置: {self.norm_params}")
     
     def calculate_reward(self, raw_metrics, movement_energy_costs, 
-                        uav_movement_delays, info):
+                        uav_movement_delays, info, boundary_violation_penalty=0.0):
         """
         计算简化版奖励
-        Reward = - (w_delay * norm_delay + w_energy * norm_energy)
+        Reward = - (w_delay * norm_delay + w_task_energy * norm_task_energy + w_move_energy * norm_move_energy)
         """
         # ========== 1. 提取并聚合指标 ==========
         user_delays = []
@@ -87,54 +80,128 @@ class AdaptiveRewardSystem:
                 
                 u_energy = (clean_local_e + clean_trans_e + clean_uav_e)
                 user_total_energies.append(u_energy)
-                # ================= 修改结束 =================
-                # user_delays.append(metrics['user_actual_delay'])
-                
-                # # 用户总能耗 = 本地 + 传输 + UAV端
-                # u_energy = (metrics['user_local_computation_energy'] + 
-                #            metrics['user_transmission_energy'] + 
-                #            metrics['user_uav_computation_energy'])
-                # user_total_energies.append(u_energy)
         
         # 聚合指标
         avg_delay = np.mean(user_delays) if user_delays else 0.0
         
         # 总任务能耗
         total_task_energy = sum(user_total_energies)
+
+        total_move_energy = 0.0
+        try:
+            if isinstance(movement_energy_costs, dict):
+                total_move_energy = float(sum(float(v) for v in movement_energy_costs.values()))
+            elif isinstance(movement_energy_costs, (list, tuple, np.ndarray)):
+                total_move_energy = float(np.sum(np.asarray(movement_energy_costs, dtype=float)))
+            elif movement_energy_costs is not None:
+                total_move_energy = float(movement_energy_costs)
+        except Exception:
+            total_move_energy = 0.0
         
-        # 更新统计极值
-        self.stats['min_avg_delay'] = min(self.stats['min_avg_delay'], avg_delay)
-        self.stats['max_avg_delay'] = max(self.stats['max_avg_delay'], avg_delay)
-        self.stats['min_total_task_energy'] = min(self.stats['min_total_task_energy'], total_task_energy)
-        self.stats['max_total_task_energy'] = max(self.stats['max_total_task_energy'], total_task_energy)
+        total_system_energy = total_task_energy + total_move_energy
         
-        # 系统总能耗 (只考虑任务能耗，忽略飞行能耗)
-        total_system_energy = total_task_energy
-        
-        # ========== 2. 归一化 ==========
-        # 归一化时延
         norm_delay = self._normalize(
             avg_delay, 
-            self.norm_params.get('min_avg_delay', 0), 
+            0.0,
             self.norm_params.get('max_avg_delay', 1.0)
         )
         
-        # 归一化能耗 (只归一化任务能耗)
         norm_task_energy = self._normalize(
             total_task_energy,
-            self.norm_params.get('min_task_energy', 0),
+            0.0,
             self.norm_params.get('max_task_energy', 1.0)
         )
-        
-        # 综合能耗得分 = 归一化后的任务能耗
-        norm_energy_score = norm_task_energy
 
+        norm_move_energy = self._normalize(
+            total_move_energy,
+            0.0,
+            self.norm_params.get('max_move_energy', 1.0)
+        )
         
-        # ========== 3. 计算最终奖励 ==========
-        # 核心公式：Reward = - (w_d * D + w_e * E)
+        w_task_energy = float(self.weights.get('w_task_energy', 0.0))
+        w_move_energy = float(self.weights.get('w_move_energy', 0.0))
+        norm_energy = w_task_energy * norm_task_energy + w_move_energy * norm_move_energy
+
+        boundary_violation_penalty_raw = 0.0
+        try:
+            boundary_violation_penalty_raw = float(boundary_violation_penalty)
+        except Exception:
+            boundary_violation_penalty_raw = 0.0
+        norm_boundary = float(np.clip(boundary_violation_penalty_raw, 0.0, 1.0))
+        
+        avg_distance = 0.0
+        norm_distance = 0.0
+        load_per_uav = [0.0 for _ in range(self.num_uavs)]
+        norm_load_imbalance = 0.0
+        try:
+            assignments = info.get('user_assignments', {}) if isinstance(info, dict) else {}
+            uav_states = np.asarray(info.get('uav_states', []), dtype=float) if isinstance(info, dict) else np.asarray([], dtype=float)
+            user_states = np.asarray(info.get('user_states', []), dtype=float) if isinstance(info, dict) else np.asarray([], dtype=float)
+            
+            dists = []
+            if uav_states.ndim == 2 and user_states.ndim == 2 and len(assignments) > 0:
+                area_length = float(info.get('area_length', 0.0)) if isinstance(info, dict) else 0.0
+                area_width = float(info.get('area_width', 0.0)) if isinstance(info, dict) else 0.0
+                if area_length > 0.0 and area_width > 0.0:
+                    max_dist = float(np.sqrt(area_length * area_length + area_width * area_width))
+                else:
+                    max_axis = 1.0
+                    if uav_states.size > 0:
+                        max_axis = max(max_axis, float(np.max(uav_states[:, :2])))
+                    if user_states.size > 0:
+                        max_axis = max(max_axis, float(np.max(user_states[:, :2])))
+                    max_dist = float(np.sqrt((max_axis ** 2) * 2.0))
+                
+                for user_id in range(self.num_users):
+                    uav_id = assignments.get(user_id, assignments.get(str(user_id), None))
+                    if uav_id is None:
+                        continue
+                    try:
+                        uav_id = int(uav_id)
+                    except Exception:
+                        continue
+                    if uav_id < 0 or uav_id >= uav_states.shape[0] or user_id >= user_states.shape[0]:
+                        continue
+                    dx = float(uav_states[uav_id, 0] - user_states[user_id, 0])
+                    dy = float(uav_states[uav_id, 1] - user_states[user_id, 1])
+                    dists.append(float(np.sqrt(dx * dx + dy * dy)))
+                
+                if dists:
+                    avg_distance = float(np.mean(dists))
+                    if max_dist > 1e-8:
+                        norm_distance = float(np.clip(avg_distance / max_dist, 0.0, 1.0))
+
+                if user_states.ndim == 2 and user_states.shape[1] >= 3:
+                    for user_id in range(self.num_users):
+                        uav_id = assignments.get(user_id, assignments.get(str(user_id), None))
+                        if uav_id is None:
+                            continue
+                        try:
+                            uav_id = int(uav_id)
+                        except Exception:
+                            continue
+                        if uav_id < 0 or uav_id >= self.num_uavs or user_id >= user_states.shape[0]:
+                            continue
+                        load_per_uav[uav_id] += float(user_states[user_id, 2])
+
+                    total_load = float(np.sum(load_per_uav))
+                    if total_load > 1e-8:
+                        max_load = float(np.max(load_per_uav))
+                        min_load = float(np.min(load_per_uav))
+                        norm_load_imbalance = float(np.clip((max_load - min_load) / (total_load + 1e-8), 0.0, 1.0))
+        except Exception:
+            avg_distance = 0.0
+            norm_distance = 0.0
+            load_per_uav = [0.0 for _ in range(self.num_uavs)]
+            norm_load_imbalance = 0.0
+
         penalty = (
-            self.weights['w_delay'] * norm_delay + 
-            self.weights['w_energy'] * norm_energy_score
+            float(self.weights.get('w_delay', 0.0)) * norm_delay +
+            float(self.weights.get('w_task_energy', 0.0)) * norm_task_energy +
+            float(self.weights.get('w_move_energy', 0.0)) * norm_move_energy +
+            float(self.weights.get('w_distance', 0.0)) * norm_distance +
+            float(self.weights.get('w_load', 0.0)) * norm_load_imbalance +
+            float(self.weights.get('w_boundary', 0.0)) * norm_boundary
         )
         
         reward = -penalty
@@ -143,8 +210,18 @@ class AdaptiveRewardSystem:
         reward_components = {
             'avg_delay': avg_delay,
             'total_energy': total_system_energy,
+            'total_task_energy': total_task_energy,
+            'total_move_energy': total_move_energy,
             'norm_delay': norm_delay,
-            'norm_energy': norm_energy_score,
+            'norm_energy': norm_energy,
+            'norm_task_energy': norm_task_energy,
+            'norm_move_energy': norm_move_energy,
+            'avg_distance': avg_distance,
+            'norm_distance': norm_distance,
+            'load_per_uav': [float(v) for v in load_per_uav],
+            'norm_load_imbalance': norm_load_imbalance,
+            'boundary_violation_penalty_raw': boundary_violation_penalty_raw,
+            'norm_boundary_violation': norm_boundary,
             'reward': reward
         }
         
@@ -176,5 +253,4 @@ class AdaptiveRewardSystem:
         """返回简单的诊断信息"""
         return {
             'weights': self.weights,
-            'stats': self.stats
         }

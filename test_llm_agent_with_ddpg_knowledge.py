@@ -8,7 +8,7 @@ import os
 import numpy as np
 from datetime import datetime
 from openai import OpenAI
-from env_simplified import SimplifiedMultiUAVEnvironment
+from env_test import TestMultiUAVEnvironment
 from llm_utils import parse_llm_output, get_default_action, state_to_prompt
 
 
@@ -309,13 +309,13 @@ def main():
     
     # 创建环境
     print("\n[1/3] 初始化环境...")
-    trajectory_file = "user_trajectories.json"
+    trajectory_file = "user_trajectories_hot.json"
     if not os.path.exists(trajectory_file):
         print(f"⚠️  警告: 未找到轨迹文件 {trajectory_file}")
         print("    将使用随机生成的用户轨迹。")
         trajectory_file = None
         
-    env = SimplifiedMultiUAVEnvironment(
+    env = TestMultiUAVEnvironment(
         num_uavs=2,
         num_users=5,
         trajectory_file=trajectory_file
@@ -326,7 +326,7 @@ def main():
     print("\n[2/3] 初始化LLM Agent...")
     
     # 优先从环境变量获取API Key，如果未设置则使用默认（测试用）Key
-    api_key = os.getenv("OPENROUTER_API_KEY") or "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"
+    api_key = os.getenv("OPENROUTER_API_KEY") or "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"
     
     agent = LLMAgentWithDDPGKnowledge(
         model="google/gemini-3-pro-preview",  # 与原版test_llm_agent.py保持一致

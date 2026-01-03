@@ -1,91 +1,114 @@
-# llm_utils.py
-"""
-LLM工具函数 - 处理状态和动作的转换
-"""
 import numpy as np
 import json
 import re
 
 
-def state_to_prompt(state, env):
+def create_prompt(state, env, step_num, history=None):
     """
-    将环境状态转换为LLM可读的提示词
+    创建LLM决策提示词
     
     Args:
         state: 环境状态字典 {'uav_pos', 'user_pos', 'user_tasks'}
-        env: 环境实例 (用于获取参数)
+        env: 环境实例
+        step_num: 当前步数
+        history: 历史记录列表 (可选)
     
     Returns:
-        str: 格式化的提示词
+        str: 完整提示词
     """
-    uav_pos = state['uav_pos'].cpu().numpy()  # [N, 2]
-    user_pos = state['user_pos'].cpu().numpy()  # [M, 2]
-    user_tasks = state['user_tasks'].cpu().numpy()  # [M, 1]
+    uav_pos = state['uav_pos'].cpu().numpy()
+    user_pos = state['user_pos'].cpu().numpy()
+    user_tasks = state['user_tasks'].cpu().numpy()
     
-    prompt = "**当前系统状态:**\n\n"
-    
-    # UAV信息
-    prompt += "**UAV位置:**\n"
+    # 构造UAV信息
+    uav_info = ""
     for i in range(env.num_uavs):
         x = uav_pos[i][0] * env.area_length
         y = uav_pos[i][1] * env.area_width
-        prompt += f"- UAV_{i}: ({x:.1f}m, {y:.1f}m)\n"
+        uav_info += f"- UAV_{i}: ({x:.1f}m, {y:.1f}m)\n"
     
-    prompt += "\n**用户信息:**\n"
-    
-    # 用户信息（包含到每个UAV的距离）
+    # 构造用户信息
+    user_info = ""
     for i in range(env.num_users):
         x = user_pos[i][0] * env.area_length
         y = user_pos[i][1] * env.area_width
         task = user_tasks[i][0] * env.max_task_size
         
-        # 计算到各UAV的3D距离（考虑UAV高度）
+        # 计算到各UAV的3D距离
         distances = []
         for j in range(env.num_uavs):
             uav_x = uav_pos[j][0] * env.area_length
             uav_y = uav_pos[j][1] * env.area_width
-            # 水平距离
             d_2d = np.sqrt((x - uav_x)**2 + (y - uav_y)**2)
-            # 3D距离（考虑UAV高度50m）
             d_3d = np.sqrt(d_2d**2 + env.uav_height**2)
             distances.append(d_3d)
         
         dist_str = ", ".join([f"到UAV_{j}: {d:.1f}m" for j, d in enumerate(distances)])
-        prompt += f"- 用户_{i}: 位置({x:.1f}m, {y:.1f}m), 任务{task:.2f}MB, {dist_str}\n"
-    
-    return prompt
+        user_info += f"- 用户_{i}: 位置({x:.1f}m, {y:.1f}m), 任务{task:.2f}MB, {dist_str}\n"
 
+    # 构造历史信息
+    history_str = ""
+    if history and len(history) > 0:
+        history_str = "**历史决策回顾 (Context):**\n为了帮助你做出更好的决策，以下是历史系统状态和执行结果回顾：\n\n"
+        # 使用全部历史数据
+        for h in history:
+            step_num = h['step']
+            assignments = h['user_assignments']
+            avg_offloading = h['avg_offloading']
+            delay = h['delay']
+            energy = h['energy']
+            
+            history_str += f"### 第{step_num}步:\n"
+            
+            # 状态描述
+            state_desc_parts = []
+            if 'uav_states' in h and h['uav_states'] is not None:
+                uav_desc = ", ".join([f"UAV{i}位于({p[0]:.0f}, {p[1]:.0f})" for i, p in enumerate(h['uav_states'])])
+                state_desc_parts.append(f"无人机位置: {uav_desc}")
+            
+            if 'user_states' in h and h['user_states'] is not None:
+                user_desc = ", ".join([f"用户{i}(任务{s[2]:.1f}MB)" for i, s in enumerate(h['user_states'])])
+                state_desc_parts.append(f"用户状态: {user_desc}")
+            
+            if state_desc_parts:
+                history_str += f"- **场景状态**: {'; '.join(state_desc_parts)}。\n"
+            
+            # 决策描述
+            # 将字典转为自然语言
+            uav0_users = [k for k, v in assignments.items() if str(v) == '0' or v == 0]
+            uav1_users = [k for k, v in assignments.items() if str(v) == '1' or v == 1]
+            
+            action_desc = "采取了以下调度策略："
+            if uav0_users:
+                action_desc += f"UAV0服务用户[{', '.join(map(str, uav0_users))}]"
+            else:
+                action_desc += "UAV0未服务任何用户"
+            
+            if uav1_users:
+                action_desc += f"，UAV1服务用户[{', '.join(map(str, uav1_users))}]"
+            else:
+                action_desc += "，UAV1未服务任何用户"
+                
+            action_desc += f"。所有用户的平均任务卸载比例设定为 {avg_offloading:.0%}。"
+            history_str += f"- **执行动作**: {action_desc}\n"
+            
+            # 结果描述
+            history_str += f"- **执行结果**: 该决策导致了 {delay:.3f}秒 的平均时延和 {energy:.2f}焦耳 的总能耗。\n"
+            history_str += "\n"
+    
+    # 返回完整提示词
+    return f"""**当前系统状态:**
 
-def create_decision_prompt(state, env, step_num, ddpg_suggestion=None):
-    """
-    创建完整的决策提示词
-    
-    Args:
-        state: 环境状态
-        env: 环境实例
-        step_num: 当前步数
-        ddpg_suggestion: (可选) DDPG专家给出的建议动作字典
-    
-    Returns:
-        str: 完整提示词
-    """
-    state_desc = state_to_prompt(state, env)
-    
-    suggestion_text = ""
-    if ddpg_suggestion:
-        suggestion_text = f"""
-**DDPG专家建议:**
-根据当前状态，专家模型建议采取以下行动（仅供参考）：
-- 用户分配: {json.dumps(ddpg_suggestion['user_assignments'])}
-- 卸载比例: {json.dumps(ddpg_suggestion['offloading_ratios'])}
-- UAV移动: {json.dumps(ddpg_suggestion['uav_movements'])}
-"""
+**UAV位置:**
+{uav_info.strip()}
 
-    prompt = f"""
-{state_desc}
+**用户信息:**
+{user_info.strip()}
+
+{history_str.strip()}
 
 **当前时刻:** 第{step_num}步
-{suggestion_text}
+
 **请做出以下决策:**
 
 1. **用户分配**: 每个用户应该由哪个UAV服务？
@@ -98,36 +121,23 @@ def create_decision_prompt(state, env, step_num, ddpg_suggestion=None):
 {{
   "user_assignments": {{
     "0": 0,
-    "1": 1,
-    "2": 0,
-    "3": 1,
-    "4": 0
+    ...
   }},
   "offloading_ratios": {{
-    "0": 0.7,
-    "1": 0.6,
-    "2": 0.8,
-    "3": 0.5,
-    "4": 0.7
+    "0": 0.5,
+    ...
   }},
   "uav_movements": {{
-    "0": {{"dx": 5.0, "dy": 0.0}},
-    "1": {{"dx": -5.0, "dy": 5.0}}
+    "0": {{"dx": 10.0, "dy": 5.0}},
+    ...
   }}
 }}
-
-**注意:**
-- user_assignments: 值必须是0或1（对应UAV_0或UAV_1）
-- offloading_ratios: 值范围[0, 1]
-- uav_movements的dx, dy: 值范围[-20, 20]米
 """
-    
-    return prompt
 
 
-def llm_decision_to_env_actions(llm_output, env):
+def parse_llm_response(llm_output, env):
     """
-    将LLM的JSON决策转换为环境可执行的动作格式
+    解析LLM输出并转换为环境动作
     
     Args:
         llm_output: LLM输出的JSON字符串或字典
@@ -136,19 +146,37 @@ def llm_decision_to_env_actions(llm_output, env):
     Returns:
         dict: 环境动作格式 {'uav_0': {...}, 'uav_1': {...}}
     """
-    # 如果是字符串，先解析为字典
+    # 解析JSON
     if isinstance(llm_output, str):
         try:
-            # 清理输出（移除markdown标记）
-            cleaned = llm_output.replace('```json', '').replace('```', '').strip()
-            decision = json.loads(cleaned)
-        except json.JSONDecodeError:
-            # 如果解析失败，尝试提取JSON部分
-            json_match = re.search(r'\{.*\}', llm_output, re.DOTALL)
-            if json_match:
-                decision = json.loads(json_match.group())
-            else:
-                raise ValueError("无法解析LLM输出为JSON")
+            # 移除 <think> 标签及其内容
+            cleaned = re.sub(r'<think>.*?</think>', '', llm_output, flags=re.DOTALL)
+            
+            # 移除Markdown代码块标记
+            cleaned = re.sub(r'```json\s*', '', cleaned)
+            cleaned = re.sub(r'```\s*', '', cleaned)
+            cleaned = cleaned.strip()
+            
+            # 尝试直接解析
+            try:
+                decision = json.loads(cleaned)
+            except json.JSONDecodeError:
+                # 寻找第一个 { 和最后一个 }
+                start = cleaned.find('{')
+                end = cleaned.rfind('}')
+                if start != -1 and end != -1 and end > start:
+                    json_str = cleaned[start:end+1]
+                    decision = json.loads(json_str)
+                else:
+                    raise ValueError("未找到有效的JSON对象")
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            # 打印原始输出用于调试
+            print(f"\n⚠️  JSON解析失败，原始LLM输出:")
+            print("="*70)
+            print(llm_output[:500])  # 只打印前500字符
+            print("="*70)
+            raise ValueError(f"无法解析LLM输出为JSON: {e}")
     else:
         decision = llm_output
     
@@ -157,53 +185,39 @@ def llm_decision_to_env_actions(llm_output, env):
     offloading_ratios = decision['offloading_ratios']
     uav_movements = decision['uav_movements']
     
-    # 构建环境动作格式
+    # 转换为环境动作格式
     actions = {}
-    
     for uav_id in range(env.num_uavs):
-        # 初始化该UAV的动作
-        uav_key = f'uav_{uav_id}'
-        
-        # 1. 用户竞争概率（硬分配）
-        user_competition_probs = np.zeros(env.num_users)
+        # 用户分配（硬分配）
+        user_probs = np.zeros(env.num_users)
         for user_id_str, assigned_uav in user_assignments.items():
-            user_id = int(user_id_str)
-            if assigned_uav == uav_id:
-                user_competition_probs[user_id] = 1.0
+            if int(assigned_uav) == uav_id:
+                user_probs[int(user_id_str)] = 1.0
         
-        # 2. 卸载比例
-        offloading_ratios_array = np.array([
+        # 卸载比例
+        offload_ratios = np.array([
             float(offloading_ratios[str(i)]) 
             for i in range(env.num_users)
         ])
         
-        # 3. 移动参数
+        # UAV移动（限制范围）
         movement = uav_movements[str(uav_id)]
+        max_dist = float(getattr(env, 'max_flight_distance', 20.0))
+        dx = np.clip(float(movement.get('dx', 0.0)), -max_dist, max_dist)
+        dy = np.clip(float(movement.get('dy', 0.0)), -max_dist, max_dist)
         
-        # 直接使用 dx, dy
-        dx = float(movement.get('dx', 0.0))
-        dy = float(movement.get('dy', 0.0))
-        
-        # 强制截断到 [-20, 20] 以防 LLM 输出越界
-        dx = np.clip(dx, -20.0, 20.0)
-        dy = np.clip(dy, -20.0, 20.0)
-        
-        actions[uav_key] = {
-            'user_competition_probs': user_competition_probs,
-            'offloading_ratios': offloading_ratios_array,
-            'move_vector': (dx, dy)  
+        actions[f'uav_{uav_id}'] = {
+            'user_competition_probs': user_probs,
+            'offloading_ratios': offload_ratios,
+            'move_vector': (dx, dy)
         }
     
     return actions
 
 
-# ★★★ 添加函数别名，兼容两种导入方式 ★★★
-parse_llm_output = llm_decision_to_env_actions
-
-
 def get_default_action(env):
     """
-    当LLM失败时使用的默认动作
+    LLM失败时的默认动作
     
     Args:
         env: 环境实例
@@ -212,18 +226,14 @@ def get_default_action(env):
         dict: 默认动作
     """
     actions = {}
-    
     for uav_id in range(env.num_uavs):
-        uav_key = f'uav_{uav_id}'
-        
-        # 简单策略：轮流分配用户，中等卸载比例，不移动
-        user_competition_probs = np.zeros(env.num_users)
+        user_probs = np.zeros(env.num_users)
         for user_id in range(env.num_users):
             if user_id % env.num_uavs == uav_id:
-                user_competition_probs[user_id] = 1.0
+                user_probs[user_id] = 1.0
         
-        actions[uav_key] = {
-            'user_competition_probs': user_competition_probs,
+        actions[f'uav_{uav_id}'] = {
+            'user_competition_probs': user_probs,
             'offloading_ratios': np.full(env.num_users, 0.6),
             'move_vector': (0.0, 0.0)
         }

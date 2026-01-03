@@ -9,7 +9,7 @@ import numpy as np
 import json
 from datetime import datetime
 from DDPG import DDPGAgent
-from env_simplified import SimplifiedMultiUAVEnvironment
+from env_test import TestMultiUAVEnvironment
 
 
 class DDPGInferenceCollector:
@@ -30,7 +30,7 @@ class DDPGInferenceCollector:
         os.makedirs(save_dir, exist_ok=True)
         
         # 创建环境
-        self.env = SimplifiedMultiUAVEnvironment(
+        self.env = TestMultiUAVEnvironment(
             num_uavs=env_config['num_uavs'],
             num_users=env_config['num_users'],
             trajectory_file=env_config.get('trajectory_file', 'user_trajectories_hot.json')
@@ -118,10 +118,27 @@ class DDPGInferenceCollector:
     def _convert_soft_to_hard(self, allocation_soft):
         """将软分配转换为硬分配"""
         allocation_hard = torch.zeros_like(allocation_soft)
+        uav_loads = np.zeros(self.env.num_uavs, dtype=int)
+        tie_margin = 0.05
         for user_id in range(self.env.num_users):
             user_probs = allocation_soft[:, user_id]
-            best_uav = torch.argmax(user_probs)
+            probs_np = user_probs.detach().cpu().numpy()
+            max_prob = float(np.max(probs_np))
+            if self.env.num_uavs >= 2:
+                sorted_probs = np.sort(probs_np)
+                second_prob = float(sorted_probs[-2])
+            else:
+                second_prob = float("-inf")
+
+            if max_prob - second_prob <= tie_margin:
+                candidates = np.flatnonzero(probs_np >= (max_prob - tie_margin))
+                min_load = int(np.min(uav_loads[candidates])) if candidates.size > 0 else int(np.min(uav_loads))
+                best_candidates = candidates[uav_loads[candidates] == min_load] if candidates.size > 0 else np.flatnonzero(uav_loads == min_load)
+                best_uav = int(np.random.choice(best_candidates))
+            else:
+                best_uav = int(torch.argmax(user_probs).item())
             allocation_hard[best_uav, user_id] = 1.0
+            uav_loads[best_uav] += 1
         return allocation_hard
     
     def _build_env_actions(self, allocation, offloading, motion):

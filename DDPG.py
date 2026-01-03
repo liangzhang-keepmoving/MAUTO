@@ -1,4 +1,3 @@
-from env_simplified import SimplifiedMultiUAVEnvironment
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,22 +26,30 @@ class Actor(nn.Module):
         # 无人机特征编码器 (2D位置)
         self.uav_encoder = nn.Sequential(
             nn.Linear(uav_feature_dim, 64),
+            nn.LayerNorm(64),
             nn.ReLU(),
-            nn.Linear(64, 128)
+            nn.Linear(64, 128),
+            nn.LayerNorm(128),
+            nn.ReLU()
         )
         
         # 用户特征编码器 (2D位置 + 任务大小)
         self.user_encoder = nn.Sequential(
             nn.Linear(user_feature_dim, 64),
+            nn.LayerNorm(64),
             nn.ReLU(),
-            nn.Linear(64, 128)
+            nn.Linear(64, 128),
+            nn.LayerNorm(128),
+            nn.ReLU()
         )
         
         # 全局特征融合
         self.global_fusion = nn.Sequential(
             nn.Linear(128 * (n_uavs + n_users), 512),
+            nn.LayerNorm(512),
             nn.ReLU(),
             nn.Linear(512, 256),
+            nn.LayerNorm(256),
             nn.ReLU()
         )
         
@@ -50,6 +57,7 @@ class Actor(nn.Module):
         # 输出 [N × M] 的logits
         self.allocation_head = nn.Sequential(
             nn.Linear(256, 256),
+            nn.LayerNorm(256),
             nn.ReLU(),
             nn.Linear(256, n_uavs * n_users)
         )
@@ -57,6 +65,7 @@ class Actor(nn.Module):
         # === 输出头2: 卸载比例 ===
         self.offloading_head = nn.Sequential(
             nn.Linear(256, 256),
+            nn.LayerNorm(256),
             nn.ReLU(),
             nn.Linear(256, n_users)
         )
@@ -64,11 +73,12 @@ class Actor(nn.Module):
         # === 输出头3: 运动控制 (XY速度) ===
         self.motion_head = nn.Sequential(
             nn.Linear(256, 128),
+            nn.LayerNorm(128),
             nn.ReLU(),
             nn.Linear(128, n_uavs * 2) # 输出 vx, vy
         )
         
-    def forward(self, uav_pos, user_pos, user_tasks, hard=False):
+    def forward(self, uav_pos, user_pos, user_tasks):
 
         batch_size = uav_pos.shape[0]
         
@@ -90,13 +100,7 @@ class Actor(nn.Module):
         allocation_logits = allocation_logits.view(batch_size, self.n_uavs, self.n_users)
         
         # 在无人机维度(dim=1)做softmax，确保每个用户选择概率和为1
-        allocation_soft = F.softmax(allocation_logits, dim=1)  # [batch, N, M]
-        
-        if hard:
-            # 硬分配：每个用户选择概率最高的无人机
-            allocation = self._hard_allocation(allocation_soft)
-        else:
-            allocation = allocation_soft
+        allocation = F.softmax(allocation_logits, dim=1)  # [batch, N, M]
         
         # 2. 卸载比例
         offloading_raw = self.offloading_head(global_features) # [batch, M]
@@ -106,14 +110,7 @@ class Actor(nn.Module):
         motion_raw = self.motion_head(global_features).view(batch_size, self.n_uavs, 2)
         motion = torch.tanh(motion_raw) # 范围 [-1, 1]，代表归一化的 vx, vy
         
-        return allocation, offloading_final, motion
-    
-    def _hard_allocation(self, allocation_soft):
-        """将软分配转换为硬分配 (0/1)"""
-        max_indices = allocation_soft.argmax(dim=1, keepdim=True)  # [batch, 1, M]
-        allocation_hard = torch.zeros_like(allocation_soft)
-        allocation_hard.scatter_(1, max_indices, 1.0)
-        return allocation_hard
+        return allocation, offloading_final, motion, allocation_logits
 
 
 # ============================================================================
@@ -134,33 +131,40 @@ class Critic(nn.Module):
         # 状态编码器
         self.state_encoder = nn.Sequential(
             nn.Linear(state_dim, 256),
+            nn.LayerNorm(256),
             nn.ReLU(),
-            nn.Linear(256, 128)
+            nn.Linear(256, 128),
+            nn.LayerNorm(128) # 这里不加ReLU，因为后面要cat
         )
         
         # 分配动作编码器
         self.allocation_encoder = nn.Sequential(
             nn.Linear(n_uavs * n_users, 128),
+            nn.LayerNorm(128),
             nn.ReLU()
         )
         
         # 卸载比例编码器
         self.offloading_encoder = nn.Sequential(
             nn.Linear(n_users, 128), # 修改：与 Actor 输出对齐，只输入 M 个值
+            nn.LayerNorm(128),
             nn.ReLU()
         )
         
         # 运动动作编码器
         self.motion_encoder = nn.Sequential(
             nn.Linear(n_uavs * 2, 64),
+            nn.LayerNorm(64),
             nn.ReLU()
         )
         
         # Q值输出
         self.q_net = nn.Sequential(
             nn.Linear(128 + 128 + 128 + 64, 256),
+            nn.LayerNorm(256),
             nn.ReLU(),
             nn.Linear(256, 128),
+            nn.LayerNorm(128),
             nn.ReLU(),
             nn.Linear(128, 1)
         )
@@ -320,7 +324,7 @@ class DDPGAgent:
         # 
         self.noise = OUNoise(action_dim=n_uavs * 2)
         self.noise_scale = 1.0      # 新增: 噪声比例
-        self.noise_decay = 0.995    # 新增: 衰减率
+        self.noise_decay = 0.99    # 新增: 衰减率
         self.min_noise_scale = 0.01 # 新增: 最小噪声
         
         # 经验回放
@@ -338,13 +342,13 @@ class DDPGAgent:
         self.critic_target.to(device)
         self.device = device
     
-    def select_action(self, state, add_noise=True, hard=False):
+    def select_action(self, state, add_noise=True):
         """
         选择动作
         Args:
             state: dict with 'uav_pos' [N,2], 'user_pos' [M,2], 'user_tasks' [M,1]
             add_noise: 是否添加探索噪声
-            hard: 是否使用硬分配
+
         
         Returns:
             allocation, offloading, motion (all as tensors)
@@ -355,23 +359,33 @@ class DDPGAgent:
             user_pos = state['user_pos'].unsqueeze(0).to(self.device)
             user_tasks = state['user_tasks'].unsqueeze(0).to(self.device)
             
-            allocation, offloading, motion = self.actor(
-                uav_pos, user_pos, user_tasks, hard=hard
+            allocation, offloading, motion, alloc_logits = self.actor(
+                uav_pos, user_pos, user_tasks
             )
             
             if add_noise:
                 # 1. 为运动添加噪声 (OU Noise)
                 # 减小噪声强度
                 noise = self.noise.sample().view(1, self.n_uavs, 2).to(self.device)
-                motion = motion + noise * self.noise_scale * 0.5 # 降低运动噪声影响
+                motion = motion + noise * self.noise_scale * 0.2 # 进一步降低运动噪声 (0.5 -> 0.2)
                 motion = torch.clamp(motion, -1, 1)
                 
                 # 2. 为卸载比例添加噪声 (Gaussian Noise)
                 # offloading shape: [1, n_users]
                 # 降低卸载决策的噪声
-                off_noise = torch.randn_like(offloading) * 0.05 * self.noise_scale 
+                off_noise = torch.randn_like(offloading) * 0.05 * self.noise_scale  # (0.1 -> 0.05)
                 offloading = offloading + off_noise
                 offloading = torch.clamp(offloading, 0, 1)
+
+                # 3. 为用户分配添加噪声 (基于 Logits 扰动)
+                # allocation shape: [1, n_uavs, n_users]
+                # 通过扰动 Logits 来探索不同的分配概率
+                # 注意: allocation 已经是 Softmax 后的结果
+                alloc_noise = torch.randn_like(alloc_logits) * 0.1 * self.noise_scale # (0.2 -> 0.1)
+                # 转换回 Log 域添加噪声再 Softmax，或者直接加噪声再归一化
+                # 这里采用简单方式：加噪声 -> ReLU (保证非负) -> 归一化
+                noisy_logits = alloc_logits + alloc_noise
+                allocation = F.softmax(noisy_logits, dim=1)  # 重新计算概率
         
         return allocation.squeeze(0), offloading.squeeze(0), motion.squeeze(0)
 
@@ -415,21 +429,18 @@ class DDPGAgent:
         
         # 归一化奖励: 将奖励缩放到一定范围，减少方差
         reward_batch = reward_batch.to(self.device)
-        # 奖励缩放 (Reward Scaling)
-        # 假设奖励主要在 [-10, 0] 之间，可以除以一个常数，例如 10.0
-        # 或者使用批次归一化 (但要注意 Critic 的目标值稳定性)
-        # reward_batch = reward_batch * 0.1 
+        # 奖励缩放 (Reward Scaling) - 关键修改：将奖励缩小，避免Q值过大导致的不稳定
+        reward_batch = reward_batch * 0.1 
 
         done_batch = done_batch.to(self.device)
         
         # ===== 更新Critic =====
         with torch.no_grad():
             # 目标网络预测下一个动作
-            next_allocation, next_offloading, next_motion = self.actor_target(
+            next_allocation, next_offloading, next_motion,_ = self.actor_target(
                 next_state_batch['uav_pos'].to(self.device),
                 next_state_batch['user_pos'].to(self.device),
-                next_state_batch['user_tasks'].to(self.device),
-                hard=False
+                next_state_batch['user_tasks'].to(self.device)
             )
             
             # 目标Q值
@@ -451,11 +462,10 @@ class DDPGAgent:
         
         # ===== 更新Actor =====
         # 注意：必须用soft分配以保证梯度流动
-        pred_allocation, pred_offloading, pred_motion = self.actor(
+        pred_allocation, pred_offloading, pred_motion,_ = self.actor(
             state_batch['uav_pos'].to(self.device),
             state_batch['user_pos'].to(self.device),
-            state_batch['user_tasks'].to(self.device),
-            hard=False  # 训练时必须是soft
+            state_batch['user_tasks'].to(self.device)
         )
         
         actor_loss = -self.critic(

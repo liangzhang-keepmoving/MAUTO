@@ -96,7 +96,7 @@ def plot_all(uav_traj_dir, user_json, output_dir="trajectory_plots"):
 if __name__ == "__main__":
     # 示例
     # 修改为你的路径
-    uav_traj_dir = "/home/niuma008/zsz/1206/uav_trajectories/run_20251207_104608"
+    uav_traj_dir = "uav_trajectories/run_20251218_103100"
     user_json = "user_trajectories_hot.json"
 
     plot_all(uav_traj_dir, user_json)
