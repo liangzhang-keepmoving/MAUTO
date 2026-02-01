@@ -50,12 +50,12 @@ class UAVEnergyModel:
 class UAVMovementManager:
     """UAV移动管理器 - 基于固定时间步长和 Zeng 能耗模型"""
 
-    def __init__(self, num_uavs, area_length, area_width, max_flight_distance, time_step=1.0):
+    def __init__(self, num_uavs, area_length, area_width, max_flight_distance, flight_time_step=1.0):
         self.num_uavs = num_uavs
         self.area_length = area_length
         self.area_width = area_width
         self.max_flight_distance = max_flight_distance
-        self.time_step = time_step  # 固定时间步长（秒）
+        self.flight_time_step = flight_time_step  # 固定时间步长（秒）
 
         # 初始化能耗模型
         self.energy_model = UAVEnergyModel()
@@ -107,23 +107,23 @@ class UAVMovementManager:
                 total_diff_distance += diff_distance
 
                 # === 计算速度（基于固定时间步）===
-                velocity = actual_distance / self.time_step if self.time_step > 0 else 0.0
+                velocity = actual_distance / self.flight_time_step if self.flight_time_step > 0 else 0.0
 
                 # === 计算功率和能耗 ===
                 power = self.energy_model.calculate_power(velocity)
-                energy_consumed = power * self.time_step
+                energy_consumed = power * self.flight_time_step
                 movement_energy_costs[uav_id] = energy_consumed
 
-                # === 移动时延：在固定时间步模型中，每步耗时 time_step ===
-                movement_delays[uav_id] = self.time_step
+                # === 移动时延：在固定时间步模型中，每步耗时 flight_time_step ===
+                movement_delays[uav_id] = self.flight_time_step
 
             else:
                 # 无移动动作：悬停
                 uav_position[uav_id] = uav_states[uav_id].copy()
-                movement_delays[uav_id] = self.time_step
+                movement_delays[uav_id] = self.flight_time_step
                 # 悬停速度 = 0
                 power = self.energy_model.calculate_power(0.0)
-                energy_consumed = power * self.time_step
+                energy_consumed = power * self.flight_time_step
                 movement_energy_costs[uav_id] = energy_consumed
 
         uav_pos_array = np.stack([uav_position[i] for i in range(self.num_uavs)], axis=0)

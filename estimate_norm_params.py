@@ -133,23 +133,6 @@ def estimate_normalization_parameters(config, num_episodes=20000, save_path='nor
                     
                     step_task_energy += (e_local + e_trans + e_uav)
                     step_transmission_energy += e_trans
-                    # ==================== 修改结束 ====================
-                    # # 时延
-                    # delay = float(raw_metrics[user_id]['user_actual_delay'])
-                    # if(delay<min_all_delay):
-                    #     min_all_delay = delay
-                    # if(delay>max_all_delay):
-                    #     max_all_delay = delay
-                    # step_delays.append(delay)
-                    
-                    # # 能耗 (修正：包含本地计算、传输、UAV计算)
-                    # step_task_energy += (
-                    #     raw_metrics[user_id]['user_local_computation_energy'] +
-                    #     raw_metrics[user_id]['user_transmission_energy'] +
-                    #     raw_metrics[user_id]['user_uav_computation_energy']
-                    # )
-                    # step_transmission_energy += raw_metrics[user_id]['user_transmission_energy']
-            
             # 聚合指标
             if len(step_delays) > 0:
                 avg_delay = np.mean(step_delays)

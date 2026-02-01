@@ -98,40 +98,16 @@ def create_prompt(state, env, step_num, history=None):
     
     # 返回完整提示词
     return f"""**当前系统状态:**
-
 **UAV位置:**
 {uav_info.strip()}
-
 **用户信息:**
 {user_info.strip()}
-
 {history_str.strip()}
-
 **当前时刻:** 第{step_num}步
-
 **请做出以下决策:**
-
 1. **用户分配**: 每个用户应该由哪个UAV服务？
 2. **卸载比例**: 每个用户的任务中多少比例卸载到UAV？(0表示全本地，1表示全卸载)
 3. **UAV移动**: 每个UAV应该移动的方向和距离
-
-**输出要求:**
-请严格按照以下JSON格式输出，不要包含任何其他文字：
-
-{{
-  "user_assignments": {{
-    "0": 0,
-    ...
-  }},
-  "offloading_ratios": {{
-    "0": 0.5,
-    ...
-  }},
-  "uav_movements": {{
-    "0": {{"dx": 10.0, "dy": 5.0}},
-    ...
-  }}
-}}
 """
 
 

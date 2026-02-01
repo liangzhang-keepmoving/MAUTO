@@ -54,7 +54,7 @@ def test_llm(num_steps=30, save_result=True):
     
     # 创建LLM代理
     print("\n[2/3] 初始化LLM代理...")
-    agent = LLMAgent(model="deepseek-reasoner",api_key="sk-2d58dde01aa94f64a1b886765fd10305")
+    agent = LLMAgent(model="google/gemini-3-flash-preview",api_key="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")
     print("✓ LLM代理创建成功")
     
     # 运行测试

@@ -6,18 +6,16 @@ import numpy as np
 class UserAllocationManager:
     """用户分配管理器 - 处理UAV间的用户竞争和分配"""
     
-    def __init__(self, num_uavs, num_users, max_task_size=10.0):
+    def __init__(self, num_uavs, num_users):
         """
         初始化用户分配管理器
         
         Args:
             num_uavs: UAV数量
-            num_users: 用户数量  
-            max_task_size: 最大任务大小 (MB)
+            num_users: 用户数量
         """
         self.num_uavs = num_uavs
         self.num_users = num_users
-        self.max_task_size = max_task_size
         
     def process_uav_actions_with_conflict_resolution(self, actions):
         """

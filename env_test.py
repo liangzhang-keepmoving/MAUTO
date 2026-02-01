@@ -27,10 +27,10 @@ class TestMultiUAVEnvironment:
         self.uav_height = 50    # 无人机飞行高度 米
         
         # 时间参数
-        self.time_step = 1.0   
+        self.flight_time_step = 1.0   
         
         # ==================== 无人机参数 ====================
-        self.uav_cpu_frequency_hz = 6e9          # UAV CPU 频率: GHz → Hz (cycles/s)
+        self.uav_cpu_frequency_hz = 10e9          # UAV CPU 频率: GHz → Hz (cycles/s)
         self.kappa_uav = 1e-28                   # UAV 能效系数 (J·s²/cycle³)    
         # 移动参数
         self.max_flight_distance = 20
@@ -42,7 +42,7 @@ class TestMultiUAVEnvironment:
         self.reference_path_loss = 1e-5    
         self.noise_power = 2e-13            
         # ==================== 用户参数 ====================
-        self.user_cpu_frequency_hz = 1e9         # 用户 CPU 频率: GHz → Hz (cycles/s)
+        self.user_cpu_frequency_hz = 2e9         # 用户 CPU 频率: GHz → Hz (cycles/s)
         self.kappa_user = 1e-28                  # 用户能效系数 (J·s²/cycle³)
 
         self.user_max_speed = 2.0          # 用户移动速度 m/s
@@ -97,8 +97,7 @@ class TestMultiUAVEnvironment:
         # 用户分配管理器
         self.user_allocation_manager = UserAllocationManager(
             num_uavs=self.num_uavs,
-            num_users=self.num_users,
-            max_task_size=self.max_task_size
+            num_users=self.num_users
         )
 
         self.reward_system = AdaptiveRewardSystem(
@@ -112,7 +111,7 @@ class TestMultiUAVEnvironment:
             area_length=self.area_length,
             area_width=self.area_width,
             max_flight_distance=self.max_flight_distance,
-            time_step=self.time_step
+            flight_time_step=self.flight_time_step
 
         )
         
@@ -155,7 +154,7 @@ class TestMultiUAVEnvironment:
     def _initialize_uavs(self):
         """初始化无人机状态"""
         self.uav_states[0] = [0,0]
-        self.uav_states[1] = [self.area_length, self.area_length]
+        self.uav_states[1] = [self.area_length,self.area_length]
     
     def _initialize_users(self):
         """初始化用户状态"""
@@ -185,10 +184,12 @@ class TestMultiUAVEnvironment:
                     self.user_states[i, 1] = self.trajectory_data[i][self.current_step, 1]
                     self.user_states[i, 2] = self.trajectory_data[i][self.current_step, 2]
         else:
-            # 原有的随机移动代码（保持不变）
+            print("使用随机移动**********************************")
+            print("使用随机移动**********************************")
+            print("使用随机移动**********************************")
             for i in range(self.num_users):
                 angle = random.uniform(0, 2 * math.pi)
-                distance = random.uniform(0, self.user_max_speed * self.time_step)
+                distance = random.uniform(0, self.user_max_speed * self.flight_time_step)
                 new_x = self.user_states[i, 0] + distance * math.cos(angle)
                 new_y = self.user_states[i, 1] + distance * math.sin(angle)
                 self.user_states[i, 0] = max(0, min(self.area_length, new_x))
@@ -288,8 +289,13 @@ class TestMultiUAVEnvironment:
         ])  # [M, 2]
         
         # 归一化用户任务大小
+        task_min = float(getattr(self, 'min_task_size', 0.0))
+        task_max = float(getattr(self, 'max_task_size', 1.0))
+        denom = task_max - task_min
+        if denom < 1e-8:
+            denom = 1.0
         user_tasks_normalized = torch.FloatTensor([
-            [self.user_states[i, 2] / self.max_task_size]
+            [max(0.0, min(1.0, (float(self.user_states[i, 2]) - task_min) / denom))]
             for i in range(self.num_users)
         ])  # [M, 1]
         

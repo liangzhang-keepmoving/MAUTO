@@ -48,21 +48,8 @@ def save_uav_trajectories_to_json(episode, trajectories, initial_positions,
 def convert_soft_to_hard_allocation(allocation_soft, num_uavs, num_users, epsilon=0.0):
     """
     将软分配转换为硬分配
-    Args:
-        epsilon: 探索概率。如果 > 0，则以 epsilon 概率随机分配用户
     """
     allocation_hard = torch.zeros_like(allocation_soft)
-    
-    # for user_id in range(num_users):
-    #     if np.random.random() < epsilon:
-    #         # 随机探索：随机选择一个UAV
-    #         best_uav = np.random.randint(0, num_uavs)
-    #     else:
-    #         # 贪婪选择：选择概率最高的UAV
-    #         user_probs = allocation_soft[:, user_id]
-    #         best_uav = torch.argmax(user_probs)
-            
-    #     allocation_hard[best_uav, user_id] = 1.0
     for user_id in range(num_users):
         user_probs = allocation_soft[:, user_id]
         best_uav = torch.argmax(user_probs)
@@ -282,7 +269,7 @@ def main():
         'lr_critic': 1e-4,
         'gamma': 0.99,
         'tau': 0.001,
-        'max_distance': 20,
+        'max_distance': 30,
     }
     
     print("开始DDPG多无人机训练...")

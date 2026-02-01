@@ -64,9 +64,7 @@ def evaluate_one_episode(env, agent, max_steps=15, save_details=False):
     episode_reward = 0.0
     episode_steps = 0
     episode_avg_delay = 0.0
-    episode_max_delay = 0.0
-    episode_task_energy = 0.0
-    episode_move_energy = 0.0
+    episode_total_energy = 0.0
     
     steps_detail = [] if save_details else None
     
@@ -95,8 +93,9 @@ def evaluate_one_episode(env, agent, max_steps=15, save_details=False):
             
             # 转换为笛卡尔坐标系的移动向量 (dx, dy)
             # max_distance 在这里作为单步最大移动距离 (20m)
-            dx = vx * float(getattr(env, 'max_flight_distance', 20.0))
-            dy = vy * float(getattr(env, 'max_flight_distance', 20.0))
+            dx = vx * 70
+            dy = vy * 70
+            print(f"UAV {uav_id} 移动向量: ({dx:.2f}, {dy:.2f})")
             
             actions[f'uav_{uav_id}'] = {
                 'user_competition_probs': allocation[uav_id].cpu().numpy(),
@@ -105,15 +104,14 @@ def evaluate_one_episode(env, agent, max_steps=15, save_details=False):
             }
         
         next_state, reward, done, info = env.step(actions)
+
         
         # 累计指标
         comps = info['reward_components']
         episode_reward += float(reward)
         episode_steps += 1
         episode_avg_delay += float(comps['avg_delay'])
-        # 适配当前 reward_system.py，使用 total_energy (即 total_task_energy)
-        # 注意：reward_system.py 中 total_energy 仅包含任务能耗
-        episode_task_energy += float(comps.get('total_task_energy', comps['total_energy']))
+        episode_total_energy += float(comps['total_energy'])
         
         # 保存步骤详情 (只保留奖励、时延、能耗)
         if save_details:
@@ -134,7 +132,7 @@ def evaluate_one_episode(env, agent, max_steps=15, save_details=False):
     result = {
         'reward': round(episode_reward, 4),
         'avg_delay': round(episode_avg_delay, 6) if episode_steps > 0 else 0, # 平均时延
-        'total_task_energy': round(episode_task_energy, 2),
+        'total_energy': round(episode_total_energy, 2),
         'steps': episode_steps
     }
     
@@ -290,7 +288,7 @@ if __name__ == "__main__":
         base_models_dir="saved_models",
         output_json_dir="eval_details",
         trajectory_file="user_trajectories.json", 
-        max_distance=20,
+        max_distance=60,
         max_steps=30,
         save_details=True
     )

@@ -124,9 +124,10 @@ def plot_for_csv(csv_file, llm_metrics_list, output_dir):
 
 def main():
     # 定义路径
-    csv_dir = r"D:\code\1219\modele_valuation"
-    llm_file1 = r"D:\code\1219\llm_test_20251221_172217.json"
-    llm_file2 = r"D:\code\1219\llm_test_20251221_172217.json"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_dir = os.path.join(base_dir, "modele_valuation")
+    llm_file1 = os.path.join(base_dir, "llm_test_20260125_124720.json")
+    llm_file2 = os.path.join(base_dir, "llm_test_20260125_124720.json")
     
     print("开始处理数据并绘图...")
     

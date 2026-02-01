@@ -27,7 +27,7 @@ class TrainingMultiUAVEnvironment:
         self.uav_height = 50    # 无人机飞行高度 米
         
         # 时间参数
-        self.time_step = 1.0   
+        self.flight_time_step = 1.0   
         
         # ==================== 无人机参数 ====================
         self.uav_cpu_frequency_hz = 6e9          # UAV CPU 频率: GHz → Hz (cycles/s)
@@ -37,7 +37,7 @@ class TrainingMultiUAVEnvironment:
         # 无线信道模型参数
         self.bandwidth = 5           
         self.transmission_power = 0.2      
-        self.path_loss_exponent = 2     
+        self.path_loss_exponent = 2.8     
         self.reference_distance = 1.0      
         self.reference_path_loss = 1e-5    
         self.noise_power = 2e-13            
@@ -48,9 +48,9 @@ class TrainingMultiUAVEnvironment:
         self.user_max_speed = 2.0          # 用户移动速度 m/s
         
         # 任务参数
-        self.min_task_size = 10           # 最小任务大小 (Mbits)
-        self.max_task_size = 30        # 最大任务大小 (Mbits)
-        self.cpu_cycles_per_bit = 1500           # 计算密度: 1000 cycles/bit （标准 MEC 假设）
+        self.min_task_size = 5           # 最小任务大小 (Mbits)
+        self.max_task_size = 10        # 最大任务大小 (Mbits)
+        self.cpu_cycles_per_bit = 1000           # 计算密度: 1000 cycles/bit （标准 MEC 假设）
         # 结束条件参数
         self.avg_task_size = (self.min_task_size + self.max_task_size) / 2  # 平均任务大小
         self.target_episode_steps = 30     # 预期每个episode的步数
@@ -97,8 +97,7 @@ class TrainingMultiUAVEnvironment:
         # 用户分配管理器
         self.user_allocation_manager = UserAllocationManager(
             num_uavs=self.num_uavs,
-            num_users=self.num_users,
-            max_task_size=self.max_task_size
+            num_users=self.num_users
         )
 
         self.reward_system = AdaptiveRewardSystem(
@@ -112,7 +111,7 @@ class TrainingMultiUAVEnvironment:
             area_length=self.area_length,
             area_width=self.area_width,
             max_flight_distance=self.max_flight_distance,
-            time_step=self.time_step
+            flight_time_step=self.flight_time_step
 
         )
         
@@ -154,8 +153,8 @@ class TrainingMultiUAVEnvironment:
     
     def _initialize_uavs(self):
         """初始化无人机状态"""
-        self.uav_states[0] = [0,0]
-        self.uav_states[1] = [self.area_length, self.area_length]
+        self.uav_states[0] = [0,self.area_length]
+        self.uav_states[1] = [self.area_length,0]
     
     def _initialize_users(self):
         """初始化用户状态"""
@@ -185,10 +184,12 @@ class TrainingMultiUAVEnvironment:
                     self.user_states[i, 1] = self.trajectory_data[i][self.current_step, 1]
                     self.user_states[i, 2] = self.trajectory_data[i][self.current_step, 2]
         else:
-            # 原有的随机移动代码（保持不变）
+            print("使用随机移动**********************************")
+            print("使用随机移动**********************************")
+            print("使用随机移动**********************************")
             for i in range(self.num_users):
                 angle = random.uniform(0, 2 * math.pi)
-                distance = random.uniform(0, self.user_max_speed * self.time_step)
+                distance = random.uniform(0, self.user_max_speed * self.flight_time_step)
                 new_x = self.user_states[i, 0] + distance * math.cos(angle)
                 new_y = self.user_states[i, 1] + distance * math.sin(angle)
                 self.user_states[i, 0] = max(0, min(self.area_length, new_x))
